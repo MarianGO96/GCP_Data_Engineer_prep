@@ -4,10 +4,41 @@ import json
 from pathlib import Path
 
 # === CONFIG ===
-PDF_PATH = "Questions_Professional_Data_engineer.pdf"  # Make sure the PDF file is in the same folder
-OUTPUT_JSON = "clean_exam_questions.json"
+EXAMS_DIR = "exams/"
+OUTPUT_DIR = "output/"
+
+# Auto-detect available PDFs or use command line argument
+import sys
+available_pdfs = list(Path(EXAMS_DIR).glob("*.pdf"))
+if len(sys.argv) > 1:
+    # Use command line argument if provided
+    pdf_filename = sys.argv[1]
+    PDF_PATH = EXAMS_DIR + pdf_filename
+else:
+    # Default to the first PDF found or Questions ML.pdf
+    if Path(EXAMS_DIR + "Questions ML.pdf").exists():
+        PDF_PATH = EXAMS_DIR + "Questions ML.pdf"
+    elif available_pdfs:
+        PDF_PATH = str(available_pdfs[0])
+    else:
+        raise FileNotFoundError("No PDF files found in exams directory")
+
 IMAGE_FOLDER = "extracted_images"
+
+# Create necessary directories
+Path(OUTPUT_DIR).mkdir(exist_ok=True)
 Path(IMAGE_FOLDER).mkdir(exist_ok=True)
+
+# Get clean output filename from PDF name
+pdf_name = Path(PDF_PATH).stem
+if "Questions ML" in pdf_name:
+    output_name = "questions_ml"
+elif "Professional_Data_engineer" in pdf_name:
+    output_name = "data_engineer"
+else:
+    output_name = pdf_name.replace(' ', '_').replace('-', '_').lower()
+
+OUTPUT_JSON = Path(OUTPUT_DIR) / f"{output_name}.json"
 
 # === UTILITY FUNCTIONS ===
 def clean_text(text):
@@ -116,7 +147,13 @@ if current_block:
         questions.append(q)
 
 # === SAVE TO JSON ===
+output_data = {
+    "exam_name": "Machine Learning",
+    "total_questions": len(questions),
+    "questions": questions
+}
+
 with open(OUTPUT_JSON, "w", encoding="utf-8") as f:
-    json.dump(questions, f, indent=2, ensure_ascii=False)
+    json.dump(output_data, f, indent=2, ensure_ascii=False)
 
 print(f"✅ Extracted {len(questions)} questions to {OUTPUT_JSON}")

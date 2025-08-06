@@ -1,10 +1,91 @@
+from pathlib import Path
 import streamlit as st
 import json
 import random
 import pandas as pd
 import matplotlib.pyplot as plt
 import os
-from pathlib import Path
+
+# Load available exam files
+@st.cache_data
+def get_available_exams():
+    exams = []
+    # Check output directory only
+    output_dir = Path("output")
+    if output_dir.exists():
+        for file in sorted(output_dir.glob("*.json")):
+            # Use the filename directly as the display name
+            name = file.stem  # This will be "ML Engineer" or "Data Engineer"
+            exams.append({"name": name, "path": str(file)})
+    
+    return exams
+
+# Load questions from selected exam file
+@st.cache_data
+def load_questions(exam_path, _file_hash=None):
+    try:
+        with open(exam_path, 'r') as f:
+            data = json.load(f)
+            # Handle both formats: direct questions list or nested under 'questions' key
+            if isinstance(data, list):
+                questions = data
+            else:
+                questions = data.get('questions', [])
+            
+            # Filter valid questions and fix structural issues
+            valid_questions = []
+            for q in questions:
+                if q.get('question_number') is not None:
+                    # Fix questions with empty answers dict by parsing from question_text
+                    if not q.get('answers') or len(q.get('answers', {})) == 0:
+                        q = fix_question_structure(q)
+                    valid_questions.append(q)
+            
+            return valid_questions
+    except FileNotFoundError:
+        st.error(f"Could not find the questions file: {exam_path}")
+        return []
+    except json.JSONDecodeError:
+        st.error(f"Error parsing the JSON file: {exam_path}")
+        return []
+    except Exception as e:
+        st.error(f"An error occurred while loading questions: {str(e)}")
+        return []
+
+def fix_question_structure(question):
+    """Fix questions where answers are embedded in question_text instead of separate answers dict"""
+    import re
+    
+    question_text = question.get('question_text', '')
+    answers = question.get('answers', {})
+    
+    # If answers dict is empty, try to parse from question_text
+    if not answers or len(answers) == 0:
+        # Try to split by option patterns like "A.", "B.", "C.", "D."
+        # First, remove trailing text like "Reveal Solution Discussion [number]"
+        clean_text = re.sub(r'\s*Reveal Solution.*$', '', question_text, flags=re.IGNORECASE)
+        clean_text = re.sub(r'\s*Discussion\s+\d+\s*$', '', clean_text)
+        
+        # Split by option letters
+        parts = re.split(r'\s+([A-D])\.\s+', clean_text)
+        
+        if len(parts) > 1:  # If we found splits
+            # First part is the question
+            clean_question_text = parts[0].strip()
+            question['question_text'] = clean_question_text
+            
+            # Parse the answers
+            parsed_answers = {}
+            for i in range(1, len(parts), 2):  # Every other item starting from 1
+                if i + 1 < len(parts):
+                    letter = parts[i]
+                    answer_text = parts[i + 1].strip()
+                    parsed_answers[letter] = answer_text
+            
+            if parsed_answers:
+                question['answers'] = parsed_answers
+    
+    return question
 
 # Set page configuration
 st.set_page_config(
@@ -113,22 +194,7 @@ def display_image(image_path):
     except Exception as e:
         st.error(f"Error displaying image: {str(e)}")
 
-# Load questions
-@st.cache_data
-def load_questions():
-    try:
-        with open('clean_exam_questions.json', 'r') as f:
-            questions = json.load(f)
-        return questions
-    except FileNotFoundError:
-        st.error("Could not find the questions file (clean_exam_questions.json). Make sure it exists in the current directory.")
-        return []
-    except json.JSONDecodeError:
-        st.error("Error parsing the JSON file. Please check if the file is valid JSON.")
-        return []
-    except Exception as e:
-        st.error(f"An error occurred while loading questions: {str(e)}")
-        return []
+# Function to display an image from the extracted_images folder
 
 def display_single_question(question, in_quiz=False, default_answer=None, answer_key=None):
     """
@@ -187,7 +253,7 @@ def display_single_question(question, in_quiz=False, default_answer=None, answer
         options = list(question.get('answers', {}).keys())
         
         # Check if the correct answer has multiple letters (like "AB" or "BCD")
-        correct_answer = question.get('correct_answer', '')
+        correct_answer = question.get('correct_answer', '') or ''
         is_multiple_choice = len(correct_answer) > 1
         
         if is_multiple_choice:
@@ -244,7 +310,7 @@ def display_single_question(question, in_quiz=False, default_answer=None, answer
     if not in_quiz:
         show_answer = st.checkbox("Show correct answer", key=f"show_answer_{question.get('question_number', '')}")
         if show_answer:
-            correct = question.get('correct_answer', '')
+            correct = question.get('correct_answer', '') or ''
             st.markdown(f"<div class='correct-answer'><strong>Correct Answer: {correct}</strong></div>", unsafe_allow_html=True)
             
             # Show community vote distribution if available
@@ -255,19 +321,56 @@ def display_single_question(question, in_quiz=False, default_answer=None, answer
 
 def main():
     # Sidebar
-    st.sidebar.title("Data Engineer Exam Prep")
+    st.sidebar.title("GCP Exam Prep")
     
-    # Load questions
-    questions = load_questions()
+    # Get available exams
+    available_exams = get_available_exams()
+    if not available_exams:
+        st.error("No exam files found in output/ or exams/ directories")
+        return
+        
+    # Exam selection
+    selected_exam = st.sidebar.selectbox(
+        "Select Exam",
+        options=available_exams,
+        format_func=lambda x: x["name"],
+        key="exam_selector"
+    )
+    
+    # Force rerun when exam selection changes
+    if "current_exam" not in st.session_state:
+        st.session_state.current_exam = selected_exam["name"]
+    elif st.session_state.current_exam != selected_exam["name"]:
+        st.session_state.current_exam = selected_exam["name"]
+        st.cache_data.clear()  # Clear cache when switching exams
+        st.rerun()
+    
+    # Load questions for selected exam
+    # Include file path and modification time to ensure proper cache differentiation
+    import os
+    try:
+        file_mtime = os.path.getmtime(selected_exam["path"])
+    except:
+        file_mtime = 0
+    # Use exam name and file path to create unique cache key
+    cache_key = f"{selected_exam['name']}_{selected_exam['path']}_{file_mtime}"
+    questions = load_questions(selected_exam["path"], _file_hash=cache_key)
     question_count = len(questions)
+    st.sidebar.info(f"Selected: {selected_exam['name']}")
     st.sidebar.info(f"Total Questions: {question_count}")
     st.sidebar.info("Case study questions are not included in this exam prep.")
+    
+    # Add cache clear button for debugging
+    if st.sidebar.button("🔄 Clear Cache"):
+        st.cache_data.clear()
+        st.rerun()
     
     # Navigation
     page = st.sidebar.radio("Navigation", ["Browse Questions", "Practice Quiz", "Statistics", "About"])
     
     if page == "Browse Questions":
         st.title("Browse Questions")
+        st.info(f"📚 Currently viewing: **{selected_exam['name']}** ({question_count} questions)")
         
         # Filters
         col1, col2 = st.columns(2)
@@ -298,6 +401,7 @@ def main():
 
     elif page == "Practice Quiz":
         st.title("Practice Quiz")
+        st.info(f"🎯 Quiz using: **{selected_exam['name']}** ({question_count} questions)")
         
         # Quiz settings
         num_questions = st.sidebar.slider("Number of questions", 10, 50, 20)
@@ -407,7 +511,7 @@ def main():
                 
                 for idx, question in enumerate(quiz_questions):
                     user_answer = answers.get(idx, "")
-                    correct_answer = question["correct_answer"]
+                    correct_answer = question.get("correct_answer", '') or ''
                     
                     # Sort the letters in user_answer to ensure consistent comparison for multi-answer questions
                     if user_answer and len(user_answer) > 1:
@@ -460,7 +564,7 @@ def main():
                 st.write("### Review Questions")
                 for idx, question in enumerate(quiz_questions):
                     user_answer = answers.get(idx, "")
-                    correct_answer = question["correct_answer"]
+                    correct_answer = question.get("correct_answer", '') or ''
                     
                     # Sort answers for comparison (not for display)
                     user_answer_sorted = ''.join(sorted(user_answer)) if user_answer and len(user_answer) > 1 else user_answer
@@ -492,6 +596,7 @@ def main():
 
     elif page == "Statistics":
         st.title("Question Statistics")
+        st.info(f"📊 Statistics for: **{selected_exam['name']}** ({question_count} questions)")
         
         if question_count > 0:
             # Calculate topic distribution
@@ -602,7 +707,7 @@ def main():
             answer_counts = {"A": 0, "B": 0, "C": 0, "D": 0, "Multiple": 0}
             
             for q in questions:
-                correct = q.get("correct_answer", "")
+                correct = q.get("correct_answer", '') or ''
                 if len(correct) == 1 and correct in answer_counts:
                     answer_counts[correct] += 1
                 else:
