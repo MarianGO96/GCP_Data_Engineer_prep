@@ -14,14 +14,10 @@ if len(sys.argv) > 1:
     # Use command line argument if provided
     pdf_filename = sys.argv[1]
     PDF_PATH = EXAMS_DIR + pdf_filename
+elif available_pdfs:
+    PDF_PATH = str(available_pdfs[0])
 else:
-    # Default to the first PDF found or Questions ML.pdf
-    if Path(EXAMS_DIR + "Questions ML.pdf").exists():
-        PDF_PATH = EXAMS_DIR + "Questions ML.pdf"
-    elif available_pdfs:
-        PDF_PATH = str(available_pdfs[0])
-    else:
-        raise FileNotFoundError("No PDF files found in exams directory")
+    raise FileNotFoundError("No PDF files found in exams directory")
 
 IMAGE_FOLDER = "extracted_images"
 
@@ -31,9 +27,7 @@ Path(IMAGE_FOLDER).mkdir(exist_ok=True)
 
 # Get clean output filename from PDF name
 pdf_name = Path(PDF_PATH).stem
-if "Questions ML" in pdf_name:
-    output_name = "questions_ml"
-elif "Professional_Data_engineer" in pdf_name:
+if "Professional_Data_engineer" in pdf_name:
     output_name = "data_engineer"
 else:
     output_name = pdf_name.replace(' ', '_').replace('-', '_').lower()
@@ -148,7 +142,7 @@ if current_block:
 
 # === SAVE TO JSON ===
 output_data = {
-    "exam_name": "Machine Learning",
+    "exam_name": "Data Engineer",
     "total_questions": len(questions),
     "questions": questions
 }

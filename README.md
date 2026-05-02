@@ -21,7 +21,7 @@ cd GCP_Data_Engineer_prep
 pip install -r requirements.txt
 
 # Run the application
-streamlit run app_fixed.py
+streamlit run app.py
 ```
 
 ## Usage

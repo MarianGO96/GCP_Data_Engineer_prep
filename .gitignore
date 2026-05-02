@@ -1,2 +1,16 @@
 # Ignore Python virtual environments
 venv/
+env/
+.venv/
+
+# Python bytecode
+__pycache__/
+*.pyc
+*.pyo
+
+# macOS
+.DS_Store
+
+# IDE
+.vscode/
+.idea/

@@ -15,7 +15,7 @@ def get_available_exams():
     if output_dir.exists():
         for file in sorted(output_dir.glob("*.json")):
             # Use the filename directly as the display name
-            name = file.stem  # This will be "ML Engineer" or "Data Engineer"
+            name = file.stem
             exams.append({"name": name, "path": str(file)})
     
     return exams
@@ -380,7 +380,7 @@ def main():
         
         with col2:
             # Get available topics (could be extracted from questions in a real app)
-            topics = ["All", "Machine Learning", "BigQuery", "Database", "Cloud Storage", "Data Processing"]
+            topics = ["All", "BigQuery", "Database", "Cloud Storage", "Data Processing"]
             selected_topic = st.selectbox("Filter by topic", topics)
         
         # Filter questions based on search term and topic
@@ -405,8 +405,8 @@ def main():
         
         # Quiz settings
         num_questions = st.sidebar.slider("Number of questions", 10, 50, 20)
-        quiz_topics = st.sidebar.multiselect("Choose topics (optional)", 
-                                             ["Machine Learning", "BigQuery", "Database", "Cloud Storage", "Data Processing"],
+        quiz_topics = st.sidebar.multiselect("Choose topics (optional)",
+                                             ["BigQuery", "Database", "Cloud Storage", "Data Processing"],
                                              [])
         
         # Initialize session state if not already done
@@ -423,15 +423,26 @@ def main():
         
         # Start quiz button
         if st.sidebar.button("Start New Quiz"):
-            # Randomly select questions
-            if question_count > 0:
-                # In a real app, would filter by topics if selected
-                quiz_questions = random.sample(questions, min(num_questions, question_count))
+            pool = questions
+            if quiz_topics:
+                topic_keywords = {
+                    "BigQuery": ["bigquery"],
+                    "Database": ["database", "sql", "table"],
+                    "Cloud Storage": ["storage", "bucket"],
+                    "Data Processing": ["dataflow", "dataproc", "processing"],
+                }
+                kws = [kw for t in quiz_topics for kw in topic_keywords[t]]
+                pool = [q for q in questions if any(kw in q["question_text"].lower() for kw in kws)]
+
+            if pool:
+                quiz_questions = random.sample(pool, min(num_questions, len(pool)))
                 st.session_state.quiz_questions = quiz_questions
                 st.session_state.current_question = 0
                 st.session_state.answers = {}
                 st.session_state.quiz_started = True
                 st.session_state.quiz_completed = False
+            elif quiz_topics:
+                st.sidebar.error("No questions match the selected topics.")
             else:
                 st.error("No questions available.")
         
@@ -601,20 +612,17 @@ def main():
         if question_count > 0:
             # Calculate topic distribution
             topics = {
-                "Machine Learning": 0,
                 "BigQuery": 0,
                 "Database": 0,
                 "Cloud Storage": 0,
                 "Data Processing": 0,
                 "Other": 0
             }
-            
+
             # Simplified topic extraction - in real implementation would be more sophisticated
             for q in questions:
                 text = q["question_text"].lower()
-                if "machine learning" in text or "model" in text or "train" in text:
-                    topics["Machine Learning"] += 1
-                elif "bigquery" in text:
+                if "bigquery" in text:
                     topics["BigQuery"] += 1
                 elif "database" in text or "sql" in text or "table" in text:
                     topics["Database"] += 1
@@ -762,9 +770,8 @@ def main():
         - Take practice quizzes with customizable settings
         - Review performance and statistics
         
-        The questions are loaded from a JSON file that contains multiple-choice questions 
+        The questions are loaded from a JSON file that contains multiple-choice questions
         related to data engineering topics including:
-        - Machine Learning
         - BigQuery
         - Cloud Storage
         - Database Design
