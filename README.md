@@ -24,6 +24,8 @@ pip install -r requirements.txt
 streamlit run app.py
 ```
 
+> To re-extract questions from a PDF (`extract_pdf.py`), additionally install PyMuPDF: `pip install PyMuPDF`. Not required for running the app.
+
 ## Usage
 
 1. **Browse Questions**: Explore the question database, search by keyword, or filter by topic
